@@ -33,11 +33,15 @@ func (s3sink *S3Sink) deleteObject(key string) error {
 
 }
 
-func (s3sink *S3Sink) createMultipartUpload(key string, entry *filer_pb.Entry) (uploadId string, err error) {
+func (s3sink *S3Sink) createMultipartUpload(
+	key string,
+	entry *filer_pb.Entry,
+) (uploadId string, err error) {
 	input := &s3.CreateMultipartUploadInput{
 		Bucket:      aws.String(s3sink.bucket),
 		Key:         aws.String(key),
 		ContentType: aws.String(entry.Attributes.Mime),
+		ACL:         aws.String(s3sink.acl),
 	}
 
 	result, err := s3sink.conn.CreateMultipartUpload(input)
@@ -64,7 +68,13 @@ func (s3sink *S3Sink) abortMultipartUpload(key, uploadId string) error {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeNoSuchUpload:
-				glog.Errorf("[%s] abortMultipartUpload %s: %v %v", s3sink.bucket, key, s3.ErrCodeNoSuchUpload, aerr.Error())
+				glog.Errorf(
+					"[%s] abortMultipartUpload %s: %v %v",
+					s3sink.bucket,
+					key,
+					s3.ErrCodeNoSuchUpload,
+					aerr.Error(),
+				)
 			default:
 				glog.Errorf("[%s] abortMultipartUpload %s: %v", s3sink.bucket, key, aerr.Error())
 			}
@@ -82,7 +92,11 @@ func (s3sink *S3Sink) abortMultipartUpload(key, uploadId string) error {
 }
 
 // To complete multipart upload
-func (s3sink *S3Sink) completeMultipartUpload(ctx context.Context, key, uploadId string, parts []*s3.CompletedPart) error {
+func (s3sink *S3Sink) completeMultipartUpload(
+	ctx context.Context,
+	key, uploadId string,
+	parts []*s3.CompletedPart,
+) error {
 	input := &s3.CompleteMultipartUploadInput{
 		Bucket:   aws.String(s3sink.bucket),
 		Key:      aws.String(key),
@@ -104,7 +118,11 @@ func (s3sink *S3Sink) completeMultipartUpload(ctx context.Context, key, uploadId
 }
 
 // To upload a part
-func (s3sink *S3Sink) uploadPart(key, uploadId string, partId int, chunk *filer.ChunkView) (*s3.CompletedPart, error) {
+func (s3sink *S3Sink) uploadPart(
+	key, uploadId string,
+	partId int,
+	chunk *filer.ChunkView,
+) (*s3.CompletedPart, error) {
 	var readSeeker io.ReadSeeker
 
 	readSeeker, err := s3sink.buildReadSeeker(chunk)
@@ -137,7 +155,12 @@ func (s3sink *S3Sink) uploadPart(key, uploadId string, partId int, chunk *filer.
 }
 
 // To upload a part by copying byte range from an existing object as data source
-func (s3sink *S3Sink) uploadPartCopy(key, uploadId string, partId int64, copySource string, sourceStart, sourceStop int) error {
+func (s3sink *S3Sink) uploadPartCopy(
+	key, uploadId string,
+	partId int64,
+	copySource string,
+	sourceStart, sourceStop int,
+) error {
 	input := &s3.UploadPartCopyInput{
 		Bucket:          aws.String(s3sink.bucket),
 		CopySource:      aws.String(fmt.Sprintf("/%s/%s", s3sink.bucket, copySource)),
@@ -164,7 +187,15 @@ func (s3sink *S3Sink) buildReadSeeker(chunk *filer.ChunkView) (io.ReadSeeker, er
 	}
 	buf := make([]byte, chunk.Size)
 	for _, fileUrl := range fileUrls {
-		_, err = util.ReadUrl(fileUrl, chunk.CipherKey, chunk.IsGzipped, false, chunk.Offset, int(chunk.Size), buf)
+		_, err = util.ReadUrl(
+			fileUrl,
+			chunk.CipherKey,
+			chunk.IsGzipped,
+			false,
+			chunk.Offset,
+			int(chunk.Size),
+			buf,
+		)
 		if err != nil {
 			glog.V(1).Infof("read from %s: %v", fileUrl, err)
 		} else {
